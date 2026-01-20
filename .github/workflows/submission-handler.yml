@@ -41,24 +41,52 @@ jobs:
             const issueNumber = context.issue.number;
             const issueBody = context.payload.issue.body || '';
             
-            // Extract T-Shirt size from the issue body
-            let tshirtSize = 'T-Shirt: Unknown';
-            const sizeMatch = issueBody.match(/T-?[Ss]hirt\s+[Ss]ize[:\s]+([^\n]+)/i);
-            if (sizeMatch && sizeMatch[1]) {
-              const size = sizeMatch[1].trim().toLowerCase();
-              // Normalize common size variations
-              if (size.includes('xs') || size.includes('extra small')) {
-                tshirtSize = 'T-Shirt: XS';
-              } else if (size.includes('s') && !size.includes('xs')) {
-                tshirtSize = 'T-Shirt: S';
-              } else if (size.includes('m') && !size.includes('xl') && !size.includes('xs')) {
-                tshirtSize = 'T-Shirt: M';
-              } else if (size.includes('l') && !size.includes('xl') && !size.includes('xs')) {
-                tshirtSize = 'T-Shirt: L';
-              } else if (size.includes('xl')) {
-                tshirtSize = 'T-Shirt: XL';
-              } else if (size.includes('xxl')) {
-                tshirtSize = 'T-Shirt: XXL';
+            const detectTshirtSize = (body) => {
+              if (!body) return null;
+              
+              // Prefer the line immediately following the issue form heading
+              const headerMatch = body.match(/###\s*T-?Shirt\s+Size[^\n]*\n+([^\n#]+)/i);
+              let rawSize = headerMatch && headerMatch[1] ? headerMatch[1].trim() : null;
+              
+              // Fallback to inline "T-Shirt Size: <value>" patterns
+              if (!rawSize) {
+                const inlineMatch = body.match(/T-?Shirt\s+Size[:\s]+([^\n]+)/i);
+                if (inlineMatch && inlineMatch[1]) {
+                  rawSize = inlineMatch[1].trim();
+                }
+              }
+              
+              if (!rawSize) return null;
+              
+              const normalized = rawSize.toUpperCase();
+              
+              if (normalized.includes('XXXL')) return 'T-Shirt: XXXL';
+              if (normalized.includes('XXL')) return 'T-Shirt: XXL';
+              if (normalized.includes('XL')) return 'T-Shirt: XL';
+              if (normalized.includes('XS')) return 'T-Shirt: XS';
+              if (normalized.startsWith('L') || normalized.includes('LARGE')) return 'T-Shirt: L';
+              if (normalized.startsWith('M') || normalized.includes('MEDIUM')) return 'T-Shirt: M';
+              if (normalized.startsWith('S') || normalized.includes('SMALL')) return 'T-Shirt: S';
+              
+              return null;
+            };
+            
+            const tshirtSize = detectTshirtSize(issueBody) || 'T-Shirt: Unknown';
+            const existingLabels = (context.payload.issue.labels || []).map(l => l.name);
+            const tshirtLabels = existingLabels.filter(name => /^t-?shirt:/i.test(name));
+            
+            for (const label of tshirtLabels) {
+              if (label !== tshirtSize) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                    name: label
+                  });
+                } catch (error) {
+                  console.log(`Label ${label} could not be removed or was already missing`);
+                }
               }
             }
             
@@ -125,6 +153,64 @@ jobs:
             // Check who closed the issue
             const closedBy = context.payload.sender?.login || 'unknown';
             const submitter = context.payload.issue.user.login;
+            const issueBody = context.payload.issue.body || '';
+            const issueNumber = context.issue.number;
+            
+            const detectTshirtSize = (body) => {
+              if (!body) return null;
+              
+              const headerMatch = body.match(/###\s*T-?Shirt\s+Size[^\n]*\n+([^\n#]+)/i);
+              let rawSize = headerMatch && headerMatch[1] ? headerMatch[1].trim() : null;
+              
+              if (!rawSize) {
+                const inlineMatch = body.match(/T-?Shirt\s+Size[:\s]+([^\n]+)/i);
+                if (inlineMatch && inlineMatch[1]) {
+                  rawSize = inlineMatch[1].trim();
+                }
+              }
+              
+              if (!rawSize) return null;
+              
+              const normalized = rawSize.toUpperCase();
+              
+              if (normalized.includes('XXXL')) return 'T-Shirt: XXXL';
+              if (normalized.includes('XXL')) return 'T-Shirt: XXL';
+              if (normalized.includes('XL')) return 'T-Shirt: XL';
+              if (normalized.includes('XS')) return 'T-Shirt: XS';
+              if (normalized.startsWith('L') || normalized.includes('LARGE')) return 'T-Shirt: L';
+              if (normalized.startsWith('M') || normalized.includes('MEDIUM')) return 'T-Shirt: M';
+              if (normalized.startsWith('S') || normalized.includes('SMALL')) return 'T-Shirt: S';
+              
+              return null;
+            };
+            
+            const tshirtSize = detectTshirtSize(issueBody) || 'T-Shirt: Unknown';
+            const existingLabels = (context.payload.issue.labels || []).map(l => l.name);
+            const tshirtLabels = existingLabels.filter(name => /^t-?shirt:/i.test(name));
+            
+            for (const label of tshirtLabels) {
+              if (label !== tshirtSize) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                    name: label
+                  });
+                } catch (error) {
+                  console.log(`Label ${label} could not be removed or was already missing`);
+                }
+              }
+            }
+            
+            if (!tshirtLabels.includes(tshirtSize)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [tshirtSize]
+              });
+            }
             
             console.log(`Issue closed by: ${closedBy}`);
             
